@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Competitor Feature Comparison</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Competitor Feature Comparison</h1>
+      <p>Enter a company's website URL to discover competitors and compare features</p>
+    </header>
+
+    {% if error %}
+    <div class="error-msg">{{ error }}</div>
+    {% endif %}
+
+    <div class="input-card">
+      <form id="analyzeForm">
+        <div class="form-group">
+          <label for="company_url">Company Website URL</label>
+          <input type="text" id="company_url" name="company_url"
+                 placeholder="e.g. https://slack.com" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="company_name">Company Name</label>
+            <input type="text" id="company_name" name="company_name"
+                   placeholder="e.g. Slack" required>
+          </div>
+          <div class="form-group">
+            <label for="top_n">Competitors to Analyze</label>
+            <select id="top_n" name="top_n">
+              <option value="3">Top 3</option>
+              <option value="5" selected>Top 5</option>
+              <option value="7">Top 7</option>
+            </select>
+          </div>
+        </div>
+        <button type="submit" class="btn-primary" id="submitBtn">
+          Analyze Competitors
+        </button>
+      </form>
+    </div>
+
+    <div class="progress-area" id="progressArea">
+      <div class="progress-bar-container">
+        <div class="progress-step" id="progressStep">Starting analysis...</div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" id="progressBar"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="resultsArea"></div>
+  </div>
+
+  <script>
+    const form = document.getElementById('analyzeForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const progressArea = document.getElementById('progressArea');
+    const progressStep = document.getElementById('progressStep');
+    const progressBar = document.getElementById('progressBar');
+    const resultsArea = document.getElementById('resultsArea');
+
+    // Auto-fill company name from URL
+    document.getElementById('company_url').addEventListener('blur', function() {
+      const nameField = document.getElementById('company_name');
+      if (nameField.value) return;
+      try {
+        let url = this.value.trim();
+        if (!url.startsWith('http')) url = 'https://' + url;
+        const hostname = new URL(url).hostname.replace('www.', '');
+        const name = hostname.split('.')[0];
+        nameField.value = name.charAt(0).toUpperCase() + name.slice(1);
+      } catch(e) {}
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      submitBtn.disabled = true;
+      progressArea.classList.add('active');
+      progressStep.textContent = 'Starting analysis...';
+      progressBar.style.width = '5%';
+      resultsArea.innerHTML = '';
+
+      const payload = {
+        company_url: document.getElementById('company_url').value,
+        company_name: document.getElementById('company_name').value,
+        top_n: parseInt(document.getElementById('top_n').value),
+      };
+
+      try {
+        const resp = await fetch('/analyze', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+
+        pollStatus(data.job_id);
+      } catch (err) {
+        progressStep.textContent = 'Error: ' + err.message;
+        submitBtn.disabled = false;
+      }
+    });
+
+    async function pollStatus(jobId) {
+      const stepProgress = {
+        'Discovering competitors': 15,
+        'Competitors found': 25,
+        'Extracting features': 50,
+        'Extracted features': 65,
+        'Comparing features': 80,
+        'Analysis complete': 100,
+      };
+
+      const poll = async () => {
+        try {
+          const resp = await fetch('/status/' + jobId);
+          const data = await resp.json();
+
+          progressStep.textContent = data.step || data.status;
+
+          // Estimate progress from step text
+          for (const [key, pct] of Object.entries(stepProgress)) {
+            if ((data.step || '').includes(key)) {
+              progressBar.style.width = pct + '%';
+              break;
+            }
+          }
+
+          if (data.status === 'complete') {
+            progressBar.style.width = '100%';
+            progressBar.style.animation = 'none';
+            renderResults(data);
+            submitBtn.disabled = false;
+            return;
+          }
+          if (data.status === 'error') {
+            progressStep.textContent = data.step;
+            submitBtn.disabled = false;
+            return;
+          }
+
+          setTimeout(poll, 2000);
+        } catch (err) {
+          progressStep.textContent = 'Connection error, retrying...';
+          setTimeout(poll, 3000);
+        }
+      };
+      poll();
+    }
+
+    function renderResults(data) {
+      const comp = data.competitors || {};
+      const features = data.features || [];
+      const comparison = (data.comparison || {}).comparison || {};
+      const target = (data.comparison || {}).target_company || '';
+
+      let html = '';
+
+      // --- Competitors ---
+      html += '<h2 class="section-title">Discovered Competitors</h2>';
+      html += '<div class="competitor-grid">';
+      for (const c of (comp.competitors || [])) {
+        html += `<div class="competitor-card">
+          <h3>${esc(c.name)}</h3>
+          <div class="url">${esc(c.url)}</div>
+          <div class="desc">${esc(c.description)}</div>
+        </div>`;
+      }
+      html += '</div>';
+
+      // --- Features per company ---
+      html += '<h2 class="section-title">Extracted Features</h2>';
+      for (const f of features) {
+        html += `<div class="feature-company"><h3>${esc(f.company)}</h3>`;
+        if (f.error) {
+          html += `<div class="error-msg">${esc(f.error)}</div>`;
+        } else {
+          for (const cat of (f.categories || [])) {
+            html += `<div class="feature-category"><h4>${esc(cat.name)}</h4>`;
+            for (const feat of (cat.features || [])) {
+              const tier = (feat.tier || 'core').toLowerCase();
+              const tierClass = 'tier-' + (['core','premium','enterprise'].includes(tier) ? tier : 'core');
+              html += `<div class="feature-item">
+                <span class="tier-badge ${tierClass}">${esc(tier)}</span>
+                <span><strong>${esc(feat.name)}</strong> &mdash; ${esc(feat.description || '')}</span>
+              </div>`;
+            }
+            html += '</div>';
+          }
+        }
+        html += '</div>';
+      }
+
+      // --- Comparison Matrix ---
+      if (comparison.categories && comparison.categories.length) {
+        html += '<h2 class="section-title">Feature Comparison Matrix</h2>';
+        html += '<div class="comparison-table-wrapper"><table class="comparison-table">';
+
+        // Gather all companies
+        const allCos = new Set();
+        for (const cat of comparison.categories) {
+          for (const feat of (cat.features || [])) {
+            for (const co of Object.keys(feat.availability || {})) allCos.add(co);
+          }
+        }
+        const companies = [...allCos].sort((a, b) => {
+          if (a.toLowerCase() === target.toLowerCase()) return -1;
+          if (b.toLowerCase() === target.toLowerCase()) return 1;
+          return a.localeCompare(b);
+        });
+
+        html += '<thead><tr><th>Feature</th>';
+        for (const co of companies) {
+          const bold = co.toLowerCase() === target.toLowerCase() ? ' style="color:var(--cyan)"' : '';
+          html += `<th${bold}>${esc(co)}</th>`;
+        }
+        html += '</tr></thead><tbody>';
+
+        for (const cat of comparison.categories) {
+          html += `<tr class="cat-row"><td colspan="${companies.length + 1}">${esc(cat.name)}</td></tr>`;
+          for (const feat of (cat.features || [])) {
+            html += `<tr><td><strong>${esc(feat.name)}</strong></td>`;
+            for (const co of companies) {
+              const v = (feat.availability || {})[co] || '—';
+              let cls = '';
+              if (['core', 'standard', 'yes'].includes(v.toLowerCase())) cls = 'avail-yes';
+              else if (['premium', 'enterprise'].includes(v.toLowerCase())) cls = 'avail-premium';
+              else if (v.toLowerCase() === 'not available') cls = 'avail-no';
+              const display = v.toLowerCase() === 'not available' ? 'No' :
+                            ['core', 'standard'].includes(v.toLowerCase()) ? 'Yes' : v;
+              html += `<td class="${cls}">${esc(display)}</td>`;
+            }
+            html += '</tr>';
+          }
+        }
+        html += '</tbody></table></div>';
+      }
+
+      // --- Unique Advantages ---
+      const advantages = comparison.unique_advantages || {};
+      if (Object.keys(advantages).length) {
+        html += '<h2 class="section-title">Unique Advantages</h2>';
+        html += '<div class="advantages-grid">';
+        for (const [co, feats] of Object.entries(advantages)) {
+          html += `<div class="advantage-card"><h4>${esc(co)}</h4><ul>`;
+          for (const f of feats) html += `<li>${esc(f)}</li>`;
+          html += '</ul></div>';
+        }
+        html += '</div>';
+      }
+
+      // --- Gaps ---
+      const gaps = comparison.gaps || [];
+      if (gaps.length) {
+        html += '<h2 class="section-title">Feature Gaps</h2>';
+        html += '<table class="gap-table"><thead><tr><th>Feature</th><th>Offered By</th><th>Importance</th></tr></thead><tbody>';
+        for (const g of gaps) {
+          const impCls = 'importance-' + (g.importance || 'medium');
+          html += `<tr>
+            <td><strong>${esc(g.feature)}</strong></td>
+            <td>${esc((g.offered_by || []).join(', '))}</td>
+            <td class="${impCls}">${esc(g.importance || '—')}</td>
+          </tr>`;
+        }
+        html += '</tbody></table>';
+      }
+
+      // --- Summary ---
+      if (comparison.summary) {
+        html += `<div class="summary-panel">
+          <h3>Competitive Positioning Summary</h3>
+          <p>${esc(comparison.summary)}</p>
+        </div>`;
+      }
+
+      resultsArea.innerHTML = html;
+    }
+
+    function esc(str) {
+      const d = document.createElement('div');
+      d.textContent = str || '';
+      return d.innerHTML;
+    }
+  </script>
+</body>
+</html>

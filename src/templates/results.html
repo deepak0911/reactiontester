@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Results — Competitor Feature Comparison</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Competitor Feature Comparison</h1>
+      <p><a href="/" style="color:var(--primary)">&#8592; New Analysis</a></p>
+    </header>
+
+    {% if error %}
+    <div class="error-msg">{{ error }}</div>
+    {% endif %}
+
+    {% if competitors and competitors.competitors %}
+    <h2 class="section-title">Discovered Competitors for {{ competitors.company }}</h2>
+    <div class="competitor-grid">
+      {% for c in competitors.competitors %}
+      <div class="competitor-card">
+        <h3>{{ c.name }}</h3>
+        <div class="url">{{ c.url }}</div>
+        <div class="desc">{{ c.description }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if features %}
+    <h2 class="section-title">Extracted Features</h2>
+    {% for f in features %}
+    <div class="feature-company">
+      <h3>{{ f.company }}</h3>
+      {% if f.error %}
+      <div class="error-msg">{{ f.error }}</div>
+      {% else %}
+      {% for cat in f.categories %}
+      <div class="feature-category">
+        <h4>{{ cat.name }}</h4>
+        {% for feat in cat.features %}
+        <div class="feature-item">
+          {% set tier = feat.tier|default('core')|lower %}
+          {% if tier == 'core' %}
+          <span class="tier-badge tier-core">core</span>
+          {% elif tier == 'premium' %}
+          <span class="tier-badge tier-premium">premium</span>
+          {% elif tier == 'enterprise' %}
+          <span class="tier-badge tier-enterprise">enterprise</span>
+          {% else %}
+          <span class="tier-badge tier-core">{{ tier }}</span>
+          {% endif %}
+          <span><strong>{{ feat.name }}</strong> &mdash; {{ feat.description|default('') }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if comparison and comparison.comparison %}
+    {% set comp = comparison.comparison %}
+
+    {% if comp.categories %}
+    <h2 class="section-title">Feature Comparison Matrix</h2>
+    {% for cat in comp.categories %}
+    <h3 style="color:var(--yellow); margin: 1rem 0 0.5rem;">{{ cat.name }}</h3>
+    <div class="comparison-table-wrapper">
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            {% set ns = namespace(companies=[]) %}
+            {% for feat in cat.features %}
+              {% for co in feat.availability.keys() %}
+                {% if co not in ns.companies %}
+                  {% set ns.companies = ns.companies + [co] %}
+                {% endif %}
+              {% endfor %}
+            {% endfor %}
+            {% for co in ns.companies %}
+            <th>{{ co }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for feat in cat.features %}
+          <tr>
+            <td><strong>{{ feat.name }}</strong></td>
+            {% for co in ns.companies %}
+            {% set v = feat.availability.get(co, '—') %}
+            {% if v|lower in ['core', 'standard', 'yes'] %}
+            <td class="avail-yes">Yes</td>
+            {% elif v|lower in ['premium', 'enterprise'] %}
+            <td class="avail-premium">{{ v }}</td>
+            {% elif v|lower == 'not available' %}
+            <td class="avail-no">No</td>
+            {% else %}
+            <td>{{ v }}</td>
+            {% endif %}
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if comp.unique_advantages %}
+    <h2 class="section-title">Unique Advantages</h2>
+    <div class="advantages-grid">
+      {% for co, feats in comp.unique_advantages.items() %}
+      <div class="advantage-card">
+        <h4>{{ co }}</h4>
+        <ul>
+          {% for f in feats %}
+          <li>{{ f }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if comp.gaps %}
+    <h2 class="section-title">Feature Gaps for {{ comparison.target_company }}</h2>
+    <table class="gap-table">
+      <thead><tr><th>Feature</th><th>Offered By</th><th>Importance</th></tr></thead>
+      <tbody>
+        {% for g in comp.gaps %}
+        <tr>
+          <td><strong>{{ g.feature }}</strong></td>
+          <td>{{ g.offered_by | join(', ') }}</td>
+          <td class="importance-{{ g.importance|default('medium') }}">{{ g.importance|default('—') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% if comp.summary %}
+    <div class="summary-panel">
+      <h3>Competitive Positioning Summary</h3>
+      <p>{{ comp.summary }}</p>
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
+</body>
+</html>

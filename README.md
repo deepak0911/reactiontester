@@ -1,6 +1,6 @@
 # Competitor Feature Comparison Tool
 
-A CLI tool that discovers top competitors for any company, scrapes their product features from the web, and generates a structured side-by-side comparison — powered by Claude API.
+A tool that discovers top competitors for any company, scrapes their product features from the web, and generates a structured side-by-side comparison — powered by Claude API. Available as both a CLI and a web UI.
 
 ## How It Works
 
@@ -20,7 +20,17 @@ cp .env.example .env
 # Edit .env and add your key
 ```
 
-## Usage
+## Web UI
+
+Launch the web interface to analyze competitors from your browser:
+
+```bash
+python -m src.webapp
+```
+
+Then open [http://localhost:5000](http://localhost:5000). Enter a company's website URL and name, pick how many competitors to analyze, and click **Analyze Competitors**. The UI shows real-time progress and renders the full comparison — competitor cards, feature breakdowns, comparison matrix, unique advantages, gaps, and a positioning summary.
+
+## CLI Usage
 
 ```bash
 # Basic usage
@@ -63,11 +73,17 @@ Results are saved as three JSON files in the output directory:
 ```
 src/
 ├── main.py               # CLI entry point and orchestration
+├── webapp.py             # Flask web UI with async job processing
 ├── competitor_finder.py   # Discover competitors via search + Claude
 ├── feature_extractor.py   # Scrape and extract features via Claude
 ├── feature_comparator.py  # Cross-company comparison via Claude
 ├── output_formatter.py    # Rich terminal output and JSON export
-└── web_scraper.py         # HTTP fetching and search utilities
+├── web_scraper.py         # HTTP fetching and search utilities
+├── templates/
+│   ├── index.html        # Input form with live progress
+│   └── results.html      # Server-rendered results page
+└── static/
+    └── style.css         # Dark-themed responsive styles
 ```
 
 ## Requirements
